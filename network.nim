@@ -1,6 +1,6 @@
 import asyncnet, asyncfile, asyncdispatch
 
-proc downloadFile(sock: AsyncSocket, targetFile: AsyncFile, fileSize: var int64) {.async.} =
+proc downloadFile*(sock: AsyncSocket, targetFile: AsyncFile, fileSize: var int64) {.async.} =
   const MAX_BUFFER: int = 1024
   var buff : array[MAX_BUFFER, byte]
   while fileSize > 0:
@@ -9,7 +9,7 @@ proc downloadFile(sock: AsyncSocket, targetFile: AsyncFile, fileSize: var int64)
     await targetFile.writeBuffer(buff.addr, dataRead)
     fileSize -= dataRead
 
-proc uploadFile(sock: AsyncSocket, sourceFile: AsyncFile, fileSize: var int64) {.async.} =
+proc uploadFile*(sock: AsyncSocket, sourceFile: AsyncFile, fileSize: var int64) {.async.} =
   const MAX_BUFFER: int = 1024
   var buff : array[MAX_BUFFER, byte]
   while filesize > 0:
