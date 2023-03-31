@@ -5,7 +5,7 @@ import "orbis/_types/save_data"
 import "orbis/UserService"
 import "orbis/_types/user"
 import "orbis/_types/errors"
-
+import os
 import asyncnet
 import asyncdispatch
 
@@ -14,6 +14,7 @@ import asyncdispatch
 proc inf = 
   while true:
     discard
+echo "Hi!"
 var initParams : OrbisUserServiceInitializeParams
 initParams.priority = 700
 if ORBIS_OK != sceUserServiceInitialize(addr(initParams)):
@@ -57,9 +58,16 @@ proc doMount(client: AsyncSocket) {.async.} =
   
   var mp : OrbisSaveDataMountPoint
   await client.send("\nMount path:")
-  await sleepAsync(1000 * 60)
+  var pathName: string
+
   for i in mountResult.mountPathName:
-    await client.send($i)
+    if i == '\x00':
+      break
+    pathName.add(i)
+  pathName = joinPath(pathName, "")
+  for path in walkDirRec(pathName, checkDir=true, skipSpecial=true):
+    await client.send("\n" & path)
+
   mp.data = mountResult.mountPathName
   
   let result2 = sceSaveDataUmount(addr(mp))
