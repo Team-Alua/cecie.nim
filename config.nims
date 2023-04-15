@@ -3,7 +3,7 @@ import os
 switch "o", "cecie.elf"
 switch "mm", "orc"
 switch "nimcache", "./cache"
-switch "threads", "off"
+# switch "threads", "off"
 
 proc getContentId: string =
   let servId = getEnv("app_SERVICE_ID")
@@ -104,7 +104,7 @@ proc generatePkg(gp4Path: string) =
   cmd.addf(" pkg_build $# ." % gp4Path)
   executeCmd(cmd)
 
-task build, "builds cecie":
+task build_pkg, "builds ps4 pkg for cecie":
   var paramsList = os.commandLineParams()
   var extraParams : string
   if paramsList.len > 1:
