@@ -52,12 +52,29 @@ discard controller.init(userId)
 discard controller.updateColor(colGreen, 255)
 asyncCheck watchdog(jobStream)
 asyncCheck scheduler(jobStream)
+type ServerState = enum
+  RUNNING
+  PAUSED
+  FINISHED
+var servState : ServerState = RUNNING
 
 while true:
   discard controller.update()
-  if controller.pressed(OrbisPadButtons.CIRCLE):
+  if controller.held(OrbisPadButtons.L2):
+    if controller.released(OrbisPadButtons.CIRCLE):
+      servState = FINISHED
+    if controller.released(OrbisPadButtons.OPTIONS):
+      if servState == PAUSED:
+        servState = RUNNING
+      else:
+        servState = PAUSED
+
+  if servState == RUNNING:
+    discard controller.updateColor(colGreen, 255)
+    poll(1)
+  elif servState == PAUSED:
+    discard controller.updateColor(colYellow, 255)
+  elif servState == FINISHED:
     discard controller.updateColor(colRed, 255)
     break
-  poll(1)
-
 InfiniteLoop()
