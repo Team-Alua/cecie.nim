@@ -16,7 +16,7 @@ proc newAsyncSocket*() : AsyncSocket =
   register(fd)
   try:
     result = newAsyncSocket(fd)
-  finally:
+  except CatchableError as e:
     # Close socket handle if exception occurs
     handle.close()
-
+    raise e
