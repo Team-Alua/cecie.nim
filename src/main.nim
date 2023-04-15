@@ -63,7 +63,7 @@ while true:
   if controller.held(OrbisPadButtons.L2):
     if controller.released(OrbisPadButtons.CIRCLE):
       servState = FINISHED
-    if controller.released(OrbisPadButtons.OPTIONS):
+    elif controller.released(OrbisPadButtons.OPTIONS):
       if servState == PAUSED:
         servState = RUNNING
       else:
