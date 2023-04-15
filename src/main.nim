@@ -1,6 +1,7 @@
 import asyncdispatch
 import os
 import logging
+import colors
 import "orbis/pad"
 import "orbis/errors"
 import "orbis/UserService"
@@ -46,15 +47,16 @@ var userId : int32
 var controller = newController()
 
 discard getUserId(userId)
-
 discard controller.init(userId)
+
+discard controller.updateColor(colGreen, 255)
 asyncCheck watchdog(jobStream)
 asyncCheck scheduler(jobStream)
 
 while true:
   discard controller.update()
   if controller.pressed(OrbisPadButtons.CIRCLE):
-    echo "Quitting..."
+    discard controller.updateColor(colRed, 255)
     break
   poll(1)
 
