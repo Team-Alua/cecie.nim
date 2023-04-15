@@ -1,18 +1,10 @@
-import asyncfile
-import macros
-import streams
-import os
-import strutils
-import posix
 import asyncdispatch
-import nativesockets
+import os
 import logging
-
-import "orbis/kernel"
+import "orbis/pad"
 import "orbis/errors"
 import "orbis/UserService"
 import "orbis/SaveData"
-import "libjbc"
 
 import "./logger"
 import "./config"
@@ -24,9 +16,8 @@ import "./scheduler"
 var jobStream = newFutureStream[string]()
 
 
-proc setupFileDirectories() = 
-  removeDir(DOWNLOAD_PATH)
-  createDir(DOWNLOAD_PATH)
+removeDir(DOWNLOAD_PATH)
+createDir(DOWNLOAD_PATH)
 
 
 var fileLog = newFileLogger(LOG_FILE, levelThreshold=lvlError)
@@ -46,8 +37,25 @@ if ORBIS_OK != savedata.init():
   log(lvlFatal, "Failed to initialize sceSaveData")
   InfiniteLoop()
 
+if ORBIS_OK != pad.init():
+  log(lvlFatal, "Failed to initialize scePad")
+  InfiniteLoop()
+
+var userId : int32
+
+var controller = newController()
+
+discard getUserId(userId)
+
+discard controller.init(userId)
 asyncCheck watchdog(jobStream)
 asyncCheck scheduler(jobStream)
 
 while true:
+  discard controller.update()
+  if controller.pressed(OrbisPadButtons.CIRCLE):
+    echo "Quitting..."
+    break
   poll(1)
+
+InfiniteLoop()

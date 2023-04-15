@@ -6,9 +6,6 @@ import json
 import strutils
 import asyncstreams
 
-import "libjbc"
-
-
 import "./sockets"
 ##
 ##             JobListener
