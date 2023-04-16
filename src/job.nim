@@ -110,6 +110,7 @@ proc createRequest[V](id, cmd: string; data: V): string =
 static: 
   doAssert createRequest("abc", "upload", "") == "{\"path\":\"/job/abc/upload\",\"data\":\"\"}"
   doAssert createRequest("abc", "upload", "hash") == "{\"path\":\"/job/abc/upload\",\"data\":\"hash\"}"
+  doAssert createRequest("abc", "upload", 1) == "{\"path\":\"/job/abc/upload\",\"data\":1}"
 
 proc getResponseValue[T](n: JsonNode): T =
   when T is int:
@@ -147,10 +148,30 @@ proc quickConnect(sIp: string, sPort: Port): Future[AsyncSocket] {.async.} =
     raise connFut.error
   return sock
 
-proc upload*(job: Job, file: AsyncFile): Future[void] {.async.} =
+proc upload*(job: Job, file: AsyncFile, filepath: string): Future[void] {.async.} =
+  if filepath.len == 0 or filepath[0] != '/':
+    raise newException(ValueError, "Invalid file path provided")
+
   let sock = await quickConnect(job.serverIp, job.serverPort)
-  await send[void, int64](sock, job.id, "upload", file.getFileSize())
+
+  let uploadFut =  send[void, int64](sock, job.id, "upload" & filepath, file.getFileSize())
+  yield uploadFut
+  if uploadFut.failed:
+    sock.close()
+    raise uploadFut.error
+
   let fut = uploadFile(sock, file)
+  yield fut
+  sock.close()
+  if fut.failed:
+    raise fut.error
+
+proc verify*(job: Job, filepath: string, hash: string): Future[void] {.async.} =
+  if filepath.len == 0 or filepath[0] != '/':
+    raise newException(ValueError, "Invalid file path provided")
+
+  let sock = await quickConnect(job.serverIp, job.serverPort)
+  let fut = send[void, string](sock, job.id, "verify" & filepath, hash)
   yield fut
   sock.close()
   if fut.failed:
@@ -158,7 +179,14 @@ proc upload*(job: Job, file: AsyncFile): Future[void] {.async.} =
 
 proc download*(job: Job, file: AsyncFile) {.async.} = 
   let sock = await quickConnect(job.serverIp, job.serverPort)
-  var fz: int64 = (await send[int, string](sock, job.id, "download", "")).int64
+
+  let sendFut = send[int, string](sock, job.id, "download", "")
+  yield sendFut
+  if sendFut.failed:
+    sock.close()
+    raise sendFut.error
+
+  var fz: int64 = read(sendFut)
 
   let fut = downloadFile(sock, file, fz)
   yield fut
