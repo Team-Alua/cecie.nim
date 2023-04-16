@@ -17,6 +17,8 @@ proc newAsyncSocket*() : AsyncSocket =
   try:
     result = newAsyncSocket(fd)
   except CatchableError as e:
+    # Unregister the descriptor
+    unregister(fd)
     # Close socket handle if exception occurs
     handle.close()
     raise e
