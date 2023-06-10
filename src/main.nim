@@ -19,6 +19,10 @@ import "./scheduler"
 import libjbc
 {.passl: "-lSceLncUtil".}
 
+var cred = get_cred()
+# Allow process to make sockets async
+cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
+discard set_cred(cred)
 var jobStream = newFutureStream[string]()
 
 

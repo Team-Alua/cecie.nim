@@ -6,7 +6,6 @@ import json
 import strutils
 import asyncstreams
 
-import "./sockets"
 ##
 ##             JobListener
 ##
@@ -15,7 +14,7 @@ type JobListener* = ref object
   socket: AsyncSocket
 
 proc newJobListener*() : JobListener = 
-  var socket: AsyncSocket = sockets.newAsyncSocket()
+  var socket: AsyncSocket = newAsyncSocket()
   return JobListener(socket: socket)
 
 
@@ -140,7 +139,7 @@ proc send[T, V](socket: AsyncSocket, id: string,  cmd: string, data: V): Future[
     return getResponseValue[T](responseJson["data"])
 
 proc quickConnect(sIp: string, sPort: Port): Future[AsyncSocket] {.async.} =
-  var sock = sockets.newAsyncSocket()
+  var sock = newAsyncSocket()
   let connFut = sock.connect(sIp, sPort)
   yield connFut
   if connFut.failed:
