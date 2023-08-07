@@ -117,7 +117,7 @@ proc getResponseValue[T](n: JsonNode): T =
   elif T is string:
     return n.getStr()
   elif T is float:
-    return getFloat(n)
+    return n.getFloat()
   elif T is bool:
     return n.getBool()
   else:
