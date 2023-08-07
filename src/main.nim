@@ -1,128 +1,125 @@
-import asyncdispatch
-import strutils
+import asyncdispatch 
 import os
+import strutils
+import asyncnet
+import json
 import logging
-import colors
-import posix
-import "orbis/procinfo"
-import "orbis/pad"
-import "orbis/errors"
-import "orbis/UserService"
-import "orbis/SaveData"
-import "orbis/systemservice"
-import "./logger"
-import "./config"
+import "logger"
+import "orbis/savedata_advanced"
+import "syscalls"
+import "./savedata"
 import "./utils"
-
-import "./watchdog"
-import "./scheduler"
 import libjbc
-{.passl: "-lSceLncUtil".}
+{.passl: "-lc -lkernel".}
+import posix
+
+addHandler(newKernelLogger())
 
 var cred = get_cred()
-# Allow process to make sockets async
+## Allow process to make sockets async
 cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
+cred.sceProcType = uint64(0x3801000000000013)
 discard set_cred(cred)
-var jobStream = newFutureStream[string]()
+
+type ClientRequestType = enum
+  rtKeySet,
+  rtDumpSave,
+  rtCreateSave,
+  rtInvalid
 
 
-removeDir(DOWNLOAD_PATH)
-createDir(DOWNLOAD_PATH)
+type ClientRequest = object
+  case RequestType: ClientRequestType
+  of rtKeySet:
+    discard
+  of rtDumpSave, rtCreateSave:
+    ftpPort: string
+    rootFolder: string
+  of rtInvalid:
+    discard
+  
+proc parseRequest(data: string): ClientRequest = 
+  try:
+    let jsonData = parseJson(data)
+    result = to(jsonData, ClientRequest)
+  except JsonParsingError, KeyError:
+    result = ClientRequest(RequestType: rtInvalid)
 
+var maxKeyset : cshort = 0
 
-var fileLog = newFileLogger(LOG_FILE, levelThreshold=lvlError, fmtStr="[$time] - $levelname: ")
-fileLog.flushThreshold = lvlError
-
-
-var kernelLog = newKernelLogger()
-
-addHandler(fileLog)
-addHandler(kernelLog)
-
-if ORBIS_OK != userservice.init():
-  log(lvlFatal, "Failed to initialize user service")
+if not loadPrivLibs():
+  log(lvlError, "Failed to load private lib")
   InfiniteLoop()
+else:
+  log(lvlInfo, "Loaded private lib!")
 
-if ORBIS_OK != savedata.init():
-  log(lvlFatal, "Failed to initialize sceSaveData")
-  InfiniteLoop()
+import posix
+# echo sudo_unmount("dev")
 
-if ORBIS_OK != pad.init():
-  log(lvlFatal, "Failed to initialize scePad")
-  InfiniteLoop()
-
-var appId : int32 
-
-var userId : int32
-
-var controller = newController()
-proc setup() : bool =
-  kernelLog.log(lvlInfo, "Performing setup...")
-  sudo:
-    appId = getAppId(APP_TITLE_ID)
-  kernelLog.log(lvlInfo, "My App Id is ", appId.toHex(8))
-  var uir = getUserId(userId)
-  if  uir != ORBIS_OK:
-    log(lvlError, "Failed to get userId", uir.toHex(8))
-    return false
-  var userSaveDataDirectory = "/user/home/$#/savedata" % userId.toHex(8).toLowerAscii()
-  kernelLog.log(lvlInfo, "Trying to mount..." , userSaveDataDirectory)
-  let mr = sudo_mount(userSaveDataDirectory, "sd")
-  if mr != 0:
-    log(lvlError, "Failed to mount user save data directory: ", osLastError())
-    return false
-  kernelLog.log(lvlInfo, "Mounted")
-
-  let ctrlInitResult = controller.init(userId)
-  if ctrlInitResult != ORBIS_OK:
-    log(lvlError, "Failed to initialize controller: ", ctrlInitResult)
-    return false
-  return true
-
-if not setup():
-  log(lvlError, "Failed to do setup")
-  InfiniteLoop()
+discard setuid(0)
 
 
-proc cleanup(): bool =
-  let umr = sudo_unmount("sd")
-  log(lvlInfo, "Trying to unmount sd...")
-  if umr != 0:
-    log(lvlError, "Failed to unmount user save data directory: ", osLastError())
-    return false
-  log(lvlInfo, "Unmounted save data directory")
-  return true
+echo "mount: ", sudo_mount("/dev/", "rootdev")
+var s : Stat
+discard stat("/rootdev/pfsctldev", s)
+discard sys_mknod("/dev/pfsctldev", Mode(S_IFCHR or 0o777), s.st_dev)
+discard stat("/rootdev/lvdctl", s)
+discard sys_mknod("/dev/lvdctl", Mode(S_IFCHR or 0o777), s.st_dev)
+echo "mount: ", sudo_unmount("rootdev")
+# echo "Sample save creation returns ", createSave("/data", "1", 96)
+discard mkdir("/data/test2", 0o777)
+var handle = mountSave("/data", "data0002", "/data/test2")
+echo "Mounting ", handle
+if handle >= 0:
+  sleep(10000)
+  echo "Unmount ", umountSave("/data/test2", handle, false)
 
-discard controller.updateColor(colGreen, 255)
-asyncCheck watchdog(jobStream)
-asyncCheck scheduler(jobStream)
+proc getMaxKeySet(): cshort = 
+  if maxKeyset > 0:
+    return maxKeyset
+  var sampleSealedKey : array[96, byte]
+  var response : cint
+  response = generateSealedKey(sampleSealedKey)
+  if response != 0:
+    return 0
+  maxKeyset = cshort(sampleSealedKey[9] shl 8 + sampleSealedKey[8])
+  return maxKeyset
 
-type ServerState = enum
-  RUNNING
-  PAUSED
-  FINISHED
-var servState : ServerState = RUNNING
+proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {.async.} = 
+  # Wait for message
+  let address = clientContext.address
+  let client = clientContext.client
+  var data = await client.recvLine()
+  defer: client.close()
+  if data.len == 0:
+    return
+  let req = parseRequest(data)
+  if req.RequestType == rtKeySet:
+    await client.send("{\"keyset\": " & $getMaxKeySet() & "}")
+  elif req.RequestType == rtDumpSave:
+    await client.send("I will be dumping save from ftp://" & address & ":" & req.ftpPort & req.rootFolder)
+  elif req.RequestType == rtCreateSave:
+    await client.send("I will be creating save from ftp://" & address & ":" & req.ftpPort & req.rootFolder)
+  elif req.RequestType == rtInvalid:
+    await client.send("invalid")
+  client.close()
+  # After forking
+  # we need to do a non blocking waitpid
+  # because if all 16 mount points are taken
+  # we want to immediately return an error if 
+  # a user tries to create or dump a save
+
+proc requestListener() {.async.} =
+  var server = newAsyncSocket()
+  server.setSockOpt(OptReuseAddr, true)
+  server.bindAddr(Port(1234))
+  server.listen()
+  while true:
+    let clientContext = await server.acceptAddr()
+    asyncCheck handleClient(clientContext)
+
+asyncCheck requestListener()
 
 while true:
-  discard controller.update()
-  if controller.held(OrbisPadButtons.L2):
-    if controller.released(OrbisPadButtons.CIRCLE):
-      servState = FINISHED
-    elif controller.released(OrbisPadButtons.OPTIONS):
-      if servState == PAUSED:
-        servState = RUNNING
-      else:
-        servState = PAUSED
+  poll(1)
 
-  if servState == RUNNING:
-    discard controller.updateColor(colGreen, 255)
-    poll(1)
-  elif servState == PAUSED:
-    discard controller.updateColor(colYellow, 255)
-  elif servState == FINISHED:
-    jobStream.complete()
-    discard controller.updateColor(colRed, 255)
-    break
-
-discard cleanup()
-InfiniteLoop()

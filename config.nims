@@ -80,8 +80,29 @@ proc generateSfo(sfoPath: string) =
 
 proc generateFself(elfIn:string, ebootPath: string) =
   var fselfBin = getOOBinaryPath("create-fself")
-  var fselfParamFmt = "$# -eboot=$# -in=$# --paid 0x3800000000000010"
-  executeCmd(fselfParamFmt % [fselfBin, ebootPath, elfIn, elfIn])
+  var sdkVersion = 0x45_08_101
+  var paid = "0x3800000000000011"
+  # 0x3800000000000010
+  var authinfo ="0000000000000000";
+  authinfo.add("0000000080030020")
+  authinfo.add("00FF000000000000")
+  authinfo.add("0000000000000000")
+  authinfo.add("0000000000000000")
+  authinfo.add("0000004000400040")
+  authinfo.add("0000000000000040")
+  authinfo.add("0200000000008000")
+  authinfo.add("0040FFFF000000F0")
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+  authinfo    .add("0000000000000000");
+
+  var fselfParamFmt = "$# -eboot=$# -sdkver=$# -in=$# --paid=$# --authinfo=$# $#"
+  executeCmd(fselfParamFmt % [fselfBin, ebootPath, $sdkVersion, elfIn,paid, authinfo, elfIn])
   
 proc generateGp4(pkgPath: string, outGp4Path: string) = 
   var createGp4Bin = getOOBinaryPath("create-gp4")
