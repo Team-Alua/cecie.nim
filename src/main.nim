@@ -11,10 +11,11 @@ import "./savedata"
 import "./utils"
 import libjbc
 {.passl: "-lc -lkernel".}
-import posix
 
 addHandler(newKernelLogger())
 
+var old_cred = get_cred()
+old_cred.sonyCred = old_cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
 var cred = get_cred()
 ## Allow process to make sockets async
 cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
@@ -23,8 +24,9 @@ discard set_cred(cred)
 
 type ClientRequestType = enum
   rtKeySet,
-  rtDumpSave,
   rtCreateSave,
+  rtDumpSave,
+  rtUpdateSave,
   rtInvalid
 
 
@@ -32,12 +34,15 @@ type ClientRequest = object
   case RequestType: ClientRequestType
   of rtKeySet:
     discard
-  of rtDumpSave, rtCreateSave:
-    ftpPort: string
-    rootFolder: string
+  of rtCreateSave, rtUpdateSave:
+    sourceFolder: string
+    targetSaveName: string
+  of rtDumpSave:
+    sourceSaveName: string
+    targetFolder: string
   of rtInvalid:
     discard
-  
+
 proc parseRequest(data: string): ClientRequest = 
   try:
     let jsonData = parseJson(data)
@@ -58,21 +63,19 @@ import posix
 
 discard setuid(0)
 
-
-echo "mount: ", sudo_mount("/dev/", "rootdev")
+discard sudo_mount("/dev/", "rootdev")
 var s : Stat
 discard stat("/rootdev/pfsctldev", s)
 discard sys_mknod("/dev/pfsctldev", Mode(S_IFCHR or 0o777), s.st_dev)
 discard stat("/rootdev/lvdctl", s)
 discard sys_mknod("/dev/lvdctl", Mode(S_IFCHR or 0o777), s.st_dev)
-echo "mount: ", sudo_unmount("rootdev")
-# echo "Sample save creation returns ", createSave("/data", "1", 96)
-discard mkdir("/data/test2", 0o777)
-var handle = mountSave("/data", "data0002", "/data/test2")
-echo "Mounting ", handle
-if handle >= 0:
-  sleep(10000)
-  echo "Unmount ", umountSave("/data/test2", handle, false)
+discard sudo_unmount("rootdev")
+#echo "Sample save creation returns ", createSave("/data", "1", 96)
+#discard mkdir("/data/test2", 0o777)
+#var handle = mountSave("/data", "data0002", "/data/test2")
+#if handle >= 0:
+#  echo "Unmount ", umountSave("/data/test2", handle, false)
+discard set_cred(old_cred)
 
 proc getMaxKeySet(): cshort = 
   if maxKeyset > 0:
@@ -85,9 +88,98 @@ proc getMaxKeySet(): cshort =
   maxKeyset = cshort(sampleSealedKey[9] shl 8 + sampleSealedKey[8])
   return maxKeyset
 
+var mountedCnt: uint
+var mountTotal: uint64 = 0
+#template forkCmdTemplate() {.dirty.} =
+#  # Can only mount 16 at a time according to docs
+#  if mountedCnt >= 16:
+#    await client.send("{\"result\": -100}")
+#    return
+#  inc mountedCnt
+#  inc mountTotal
+#  let mountId = "mnt" & $mountTotal
+#  let pid = sys_fork()
+#  if pid == -1:
+#    echo "Failed to fork: ", errno
+#    return
+#  elif pid > 0:
+#    var status: cint
+#    while true: 
+#      let cPid = Pid(pid)
+#      let wPid = waitpid(cPid, status, WNOHANG)
+#      if cPid == wPid:
+#        break
+#      await sleepAsync(250)
+#    await client.send("{\"result\": " & $status  & "}")
+#    dec mountedCnt
+#    return
+
+proc dumpSave(client: AsyncSocket, cmd: ClientRequest) {.async.} =
+  # Check if directory is accessible
+  var s: Stat
+  if stat(cmd.targetFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
+    await client.send("{\"result\": -99}")
+    return
+
+  # Can only mount 16 at a time according to docs
+  if mountedCnt >= 16:
+    await client.send("{\"result\": -100}")
+    return
+  inc mountedCnt
+  inc mountTotal
+  let mountId = "mnt" & $mountTotal
+  let pid = sys_fork()
+  if pid == -1:
+    echo "Failed to fork: ", errno
+    return
+  elif pid > 0:
+    var status: cint
+    while true: 
+      let cPid = Pid(pid)
+      let wPid = waitpid(cPid, status, WNOHANG)
+      if cPid == wPid:
+        break
+      await sleepAsync(250)
+    await client.send("{\"result\": " & $status  & "}")
+    dec mountedCnt
+    return
+  let saveDirectory = "/data"
+  let mntFolder = "/data/" & mountId
+  # Run as root
+  var cred = get_cred()
+  ## Allow process to make sockets async
+  cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
+  cred.sceProcType = uint64(0x3801000000000013)
+  discard set_cred(cred)
+  discard setuid(0)
+
+  discard unlink(mntFolder.cstring)
+  discard mkdir(mntFolder.cstring, 0o777)
+  # Then dump everything
+  let handle = mountSave(saveDirectory, cmd.sourceSaveName, mntFolder)
+  if handle >= 0:
+    var folders = @[""]
+    while folders.len > 0:
+      let relativeFolder = folders.pop()
+      let currFolder = mntFolder / relativeFolder
+      for kind, file in walkDir(currFolder,relative=true):
+        if kind == pcDir:
+          let targetPath = joinPath(cmd.targetFolder, file)
+          folders.add file
+          discard mkdir(targetPath.cstring, 0o777)
+        elif kind == pcFile:
+          let targetFile = joinPath(cmd.targetFolder, relativeFolder / file)
+          # Create it just in case
+          let fd = open(targetFile.cstring, O_RDONLY, 0o777)
+          discard close(fd)
+          let sourceFile = joinPath(currFolder, file)
+          copyFile(sourceFile, targetFile)
+    discard umountSave(mntFolder, handle, false)
+  discard unlink(mntFolder.cstring)
+  exitnow(0)
 proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {.async.} = 
   # Wait for message
-  let address = clientContext.address
+  # let address = clientContext.address
   let client = clientContext.client
   var data = await client.recvLine()
   defer: client.close()
@@ -97,9 +189,11 @@ proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {
   if req.RequestType == rtKeySet:
     await client.send("{\"keyset\": " & $getMaxKeySet() & "}")
   elif req.RequestType == rtDumpSave:
-    await client.send("I will be dumping save from ftp://" & address & ":" & req.ftpPort & req.rootFolder)
+    await client.send("I will be dumping save")
+    await dumpSave(client, req)
+    echo "Dump completed"
   elif req.RequestType == rtCreateSave:
-    await client.send("I will be creating save from ftp://" & address & ":" & req.ftpPort & req.rootFolder)
+    await client.send("I will be creating save")
   elif req.RequestType == rtInvalid:
     await client.send("invalid")
   client.close()
