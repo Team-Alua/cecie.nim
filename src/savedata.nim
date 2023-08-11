@@ -88,7 +88,7 @@ proc createSave*(folder: string, saveName: string, blocks: cint) : cint =
   if fd == -1:
     return -4
   var volumeSize = culonglong(blocks shl 15)
-  ret = sceFsUfsAllocateSaveData(fd, volumeSize, 1 shl 7, 0)
+  ret = sceFsUfsAllocateSaveData(fd, volumeSize, 0 shl 7, 0)
   discard close(fd);
   if ret < 0:
     return -5
