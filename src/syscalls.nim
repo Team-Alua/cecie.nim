@@ -60,4 +60,12 @@ proc sys_mknod*(path: cstring, mode: Mode, dev: Dev): cint {.cdecl, exportc.} =
     : "=a"(`result`), "=@ccc"(`err`)
   """
   toCError(result, err)
+proc sys_fork*(): cint {.cdecl, exportc.} = 
+  var err: bool
+  asm """
+    ".intel_syntax;"
+    "mov rax, 2;"
+    "syscall;"
+    : "=a"(`result`), "=@ccc"(`err`)
+  """
 {.pop.}
