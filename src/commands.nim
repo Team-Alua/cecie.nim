@@ -39,7 +39,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
       for kind, file in walkDir(currFolder,relative=true, skipSpecial=true):
         if kind == pcDir:
           let targetPath = joinPath(currTargetFolder, file)
-          folders.add file
+          folders.add relativeFolder / file
           discard mkdir(targetPath.cstring, 0o777)
         elif kind == pcFile:
           let targetFile = joinPath(currTargetFolder, file)
@@ -98,7 +98,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
       for kind, file in walkDir(currFolder,relative=true, skipSpecial=true):
         if kind == pcDir:
           let targetPath = joinPath(currTargetFolder, file)
-          folders.add file
+          folders.add relativeFolder / file
           discard mkdir(targetPath.cstring, 0o777)
         elif kind == pcFile:
           let targetFile = joinPath(currTargetFolder, file)
