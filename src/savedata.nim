@@ -6,7 +6,6 @@ import "orbis/kernel"
 import "orbis/savedata_advanced"
 
 import "syscalls"
-
 import libjbc
 
 var sceFsUfsAllocateSaveData : proc (fd: cint, imageSize: culonglong, imageFlags: culonglong, ext: cint) : cint {.cdecl.}
@@ -130,3 +129,14 @@ proc umountSave*(mountPath: string, handle: cint, ignoreErrors: bool) : cint =
   var opt: UmountSaveDataOpt
   discard sceFsInitUmountSaveDataOpt(opt.addr)
   return sceFsUmountSaveData(opt.addr,mountPath.cstring, handle, ignoreErrors)
+
+var maxKeyset: cshort 
+# Crashes for some reason
+proc getMaxKeySet*(): cshort = 
+  if maxKeyset > 0:
+    return maxKeyset
+  var sampleSealedKey : array[0x60, byte]
+  if generateSealedKey(sampleSealedKey) != 0:
+    return 0
+  maxKeyset = cshort(sampleSealedKey[9] shl 8 + sampleSealedKey[8])
+  return maxKeyset
