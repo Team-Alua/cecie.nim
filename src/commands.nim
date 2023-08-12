@@ -25,7 +25,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
   discard set_cred(cred)
   discard setuid(0)
 
-  discard unlink(mntFolder.cstring)
+  discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
   let handle = mountSave(saveDirectory, cmd.sourceSaveName, mntFolder)
@@ -53,7 +53,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
             respondWith(client, -96)
             exitnow(-1)
     discard umountSave(mntFolder, handle, false)
-  discard unlink(mntFolder.cstring)
+  discard rmdir(mntFolder.cstring)
   exitnow(0)
 
 proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
@@ -61,16 +61,17 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
   if stat(cmd.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
     respondWith(client, -99)
     return 
-
-  if stat(cmd.targetSaveName.cstring, s) != 0 or s.st_mode.S_ISDIR:
+  let saveDirectory = "/data"
+  let targetSaveImage = joinPath(saveDirectory, cmd.targetSaveName)
+  let targetSaveKey = joinPath(saveDirectory, cmd.targetSaveName & ".bin")
+  if stat(targetSaveImage.cstring, s) != 0 or s.st_mode.S_ISDIR:
     respondWith(client, -98)
     return 
 
-  if stat((cmd.targetSaveName & ".bin").cstring, s) != 0 or s.st_mode.S_ISDIR:
+  if stat(targetSaveKey.cstring, s) != 0 or s.st_mode.S_ISDIR:
     respondWith(client, -97)
     return
 
-  let saveDirectory = "/data"
   let mntFolder = "/data/" & mountId
   # Run as root
   var cred = get_cred()
@@ -79,7 +80,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
   discard set_cred(cred)
   discard setuid(0)
 
-  discard unlink(mntFolder.cstring)
+  discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
   let handle = mountSave(saveDirectory, cmd.targetSaveName, mntFolder)
@@ -102,10 +103,11 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
           discard mkdir(targetPath.cstring, 0o777)
         elif kind == pcFile:
           let targetFile = joinPath(currTargetFolder, file)
-          # Create it just in case
-          let fd = open(targetFile.cstring, O_RDONLY, 0o777)
+          # Create and truncate it just in case
+          let fd = open(targetFile.cstring, O_CREAT or O_TRUNC, 0o777)
           discard close(fd)
           let sourceFile = joinPath(currFolder, file)
+          echo sourceFile , " => " , targetFile
           try:
             copyFile(sourceFile, targetFile)
           except OSError:
@@ -113,7 +115,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
             exitnow(-1)
     discard setuid(0)
     discard umountSave(mntFolder, handle, false)
-  discard unlink(mntFolder.cstring)
+  discard rmdir(mntFolder.cstring)
   exitnow(0)
 
 type RequestHandler = proc (cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.}
@@ -159,7 +161,6 @@ proc handleCmd*(client: AsyncSocket, cmd: ClientRequest) {.async.} =
     await client.send("{\"keyset\":" & $getMaxKeySet() & "}")
   elif cmd.RequestType == rtInvalid:
     respondWith(client, -1098)
-    exitnow(-1)
   else:
     await handleForkCmds(client, cmd)
 
