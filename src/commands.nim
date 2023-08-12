@@ -7,16 +7,35 @@ import "./syscalls"
 import "./savedata"
 import libjbc
 
-template respondWith(client: AsyncSocket, code: int) =
-  await client.send("{\"status\": " & $code & "}")
+
+
+template respondWith(client: AsyncSocket, code: string) =
+
+  await client.send(block: 
+    var status = ""
+    status.add "{\"status\":\""
+    status.add code
+    status.add "\"}"
+    status)
 
 
 proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
   var s: Stat
   if stat(cmd.targetFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
-    respondWith(client, -99)
+    respondWith(client, "E:TARGET_FOLDER_INVALID")
     return
+
   let saveDirectory = "/data"
+  let sourceSaveImage = joinPath(saveDirectory, cmd.sourceSaveName)
+  let sourceSaveKey = joinPath(saveDirectory, cmd.sourceSaveName & ".bin")
+  if stat(sourceSaveImage.cstring, s) != 0 or s.st_mode.S_ISDIR:
+    respondWith(client, "E:SAVE_IMAGE_INVALID")
+    return 
+
+  if stat(sourceSaveKey.cstring, s) != 0 or s.st_mode.S_ISDIR:
+    respondWith(client, "E:SAVE_KEY_INVALID")
+    return
+
   let mntFolder = "/data/" & mountId
   # Run as root
   var cred = get_cred()
@@ -50,7 +69,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
           try:
             copyFile(sourceFile, targetFile)
           except OSError:
-            respondWith(client, -96)
+            respondWith(client, "E:COPY_FAILED")
             exitnow(-1)
     discard umountSave(mntFolder, handle, false)
   discard rmdir(mntFolder.cstring)
@@ -59,17 +78,17 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
 proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
   var s: Stat
   if stat(cmd.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
-    respondWith(client, -99)
+    respondWith(client, "E:SOURCE_FOLDER_INVALID")
     return 
   let saveDirectory = "/data"
   let targetSaveImage = joinPath(saveDirectory, cmd.targetSaveName)
   let targetSaveKey = joinPath(saveDirectory, cmd.targetSaveName & ".bin")
   if stat(targetSaveImage.cstring, s) != 0 or s.st_mode.S_ISDIR:
-    respondWith(client, -98)
+    respondWith(client, "E:SAVE_IMAGE_INVALID")
     return 
 
   if stat(targetSaveKey.cstring, s) != 0 or s.st_mode.S_ISDIR:
-    respondWith(client, -97)
+    respondWith(client, "E:SAVE_KEY_INVALID")
     return
 
   let mntFolder = "/data/" & mountId
@@ -111,7 +130,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
           try:
             copyFile(sourceFile, targetFile)
           except OSError:
-            respondWith(client, -96)
+            respondWith(client, "E:COPY_FAILED")
             exitnow(-1)
     discard setuid(0)
     discard umountSave(mntFolder, handle, false)
@@ -132,11 +151,11 @@ proc handleForkCmds(client: AsyncSocket, cmd: ClientRequest) {.async.} =
   inc slotTotal
   if slot >= 16:
     dec slot
-    respondWith(client, -1099)
+    respondWith(client, "E:SLOT_LIMIT_REACHED")
     return
   let pid = sys_fork()
   if pid == -1:
-    respondWith(client, errno)
+    respondWith(client, "E:errno-" & $errno)
     return
   elif pid > 0:
     var status: cint
@@ -148,19 +167,19 @@ proc handleForkCmds(client: AsyncSocket, cmd: ClientRequest) {.async.} =
       await sleepAsync(250)
     dec slot
     if status == 0:
-      respondWith(client, status)
+      respondWith(client, "S:OK")
     return
   var handler = cmds[cmd.RequestType]
   if not handler.isNil:
     await handler(cmd, client, "mnt" & $slotTotal)
   else:
-    respondWith(client, -1097)
+    respondWith(client, "E:CMD_NOT_IMPLEMENTED")
   exitnow(-1)
 proc handleCmd*(client: AsyncSocket, cmd: ClientRequest) {.async.} =
   if cmd.RequestType == rtKeySet:
     await client.send("{\"keyset\":" & $getMaxKeySet() & "}")
   elif cmd.RequestType == rtInvalid:
-    respondWith(client, -1098)
+    respondWith(client, "E:INVALID_CMD")
   else:
     await handleForkCmds(client, cmd)
 
