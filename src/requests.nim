@@ -1,6 +1,7 @@
 import json
 type ClientRequestType* = enum
   rtKeySet,
+  rtListSaveFiles,
   rtCreateSave,
   rtDumpSave,
   rtUpdateSave,
@@ -11,12 +12,16 @@ type ClientRequest* = object
   case RequestType*: ClientRequestType
   of rtKeySet:
     discard
+  of rtListSaveFiles:
+    listTargetSaveName*: string
   of rtCreateSave, rtUpdateSave:
     sourceFolder*: string
     targetSaveName*: string
+    selectOnly*: seq[string]
   of rtDumpSave:
     sourceSaveName*: string
     targetFolder*: string
+    dumpOnly*: seq[string]
   of rtInvalid:
     discard
 

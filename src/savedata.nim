@@ -103,29 +103,28 @@ proc createSave*(folder: string, saveName: string, blocks: cint) : cint =
   discard close(fd);
   return 0
 
-proc mountSave*(folder: string, saveName: string, mountPath: string) : cint = 
+proc mountSave*(folder: string, saveName: string, mountPath: string) : tuple[path: cint, error : cint] = 
   var sealedKey : array[96, byte]
   var volumeKeyPath : string = joinPath(folder, saveName & ".bin")
   var volumePath : string = joinPath(folder, saveName)
   var fd = sys_open(volumeKeyPath.cstring, O_RDONLY, 0)
   if fd == -1:
-    echo "errno: ", errno, " file: ", volumeKeyPath
-    return -1
+    return (-1, errno)
   discard read(fd,sealedKey.addr, sealedKey.len)
   discard close(fd)
 
   var decryptedSealedKey: array[32, byte]
   var ret = decryptSealedKey(sealedKey, decryptedSealedKey)
   if ret == -1:
-    return -2
+    return (-2, errno)
   var opt : MountSaveDataOpt
   discard sceFsInitMountSaveDataOpt(opt.addr)
   ret = sceFsMountSaveData(opt.addr, volumePath.cstring, mountPath.cstring, decryptedSealedKey)
   if ret < 0:
-    return -3
-  return ret
+    return (-3, ret)
+  return (0, 0)
 
-proc umountSave*(mountPath: string, handle: cint, ignoreErrors: bool) : cint = 
+proc umountSave*(mountPath: string, handle: cint, ignoreErrors: bool) : cint =
   var opt: UmountSaveDataOpt
   discard sceFsInitUmountSaveDataOpt(opt.addr)
   return sceFsUmountSaveData(opt.addr,mountPath.cstring, handle, ignoreErrors)
