@@ -265,7 +265,7 @@ proc handleForkCmds(client: AsyncSocket, cmd: ClientRequest) {.async.} =
     return
   let pid = sys_fork()
   if pid == -1:
-    respondWithError(client, "E:errno-" & $errno)
+    respondWithError(client, "E:sys_fork-errno-" & $errno)
     return
   elif pid > 0:
     var status: cint
