@@ -15,4 +15,3 @@ let SAVE_DIRECTORY* = config.getSectionValue("", "saveDirectory", "/data")
 
 let SERVER_PORT* = nativesockets.Port(parseInt(config.getSectionValue("", "port", "1234")))
 
-

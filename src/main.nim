@@ -4,6 +4,7 @@ import asyncnet
 import logging
 import "logger"
 import "syscalls"
+import "./config"
 import "./savedata"
 import "./utils"
 import "./commands"
@@ -60,9 +61,9 @@ proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {
 proc requestListener() {.async.} =
   var server = newAsyncSocket()
   server.setSockOpt(OptReuseAddr, true)
-  server.bindAddr(Port(1234))
+  server.bindAddr(SERVER_PORT)
   server.listen()
-  echo "Listening at port 1234"
+  echo "Listening at port ", int(SERVER_PORT)
   while true:
     let clientContext = await server.acceptAddr()
     asyncCheck handleClient(clientContext)
