@@ -6,6 +6,7 @@ import os
 import "./requests"
 import "./syscalls"
 import "./savedata"
+import "./config"
 import libjbc
 import marshal
 import json
@@ -127,8 +128,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
     respondWithError(client, "E:TARGET_FOLDER_INVALID")
     return
 
-  let saveDirectory = "/data"
-  let saveStatus = checkSave(saveDirectory, cmd.sourceSaveName)
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.sourceSaveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -139,7 +139,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
-  var (errPath, handle) = mountSave(saveDirectory, cmd.sourceSaveName, mntFolder)
+  var (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.sourceSaveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
@@ -172,8 +172,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
   if stat(cmd.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
     respondWithError(client, "E:SOURCE_FOLDER_INVALID")
     return 
-  let saveDirectory = "/data"
-  let saveStatus = checkSave(saveDirectory, cmd.targetSaveName)
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.targetSaveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -184,7 +183,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
-  let (errPath, handle) = mountSave(saveDirectory, cmd.targetSaveName, mntFolder)
+  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.targetSaveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
@@ -217,8 +216,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
     exitnow(0)
 
 proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
-  let saveDirectory = "/data"
-  let saveStatus = checkSave(saveDirectory, cmd.listTargetSaveName)
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.listTargetSaveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -229,7 +227,7 @@ proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.a
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
 
-  let (errPath, handle) = mountSave(saveDirectory, cmd.listTargetSaveName, mntFolder)
+  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.listTargetSaveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
