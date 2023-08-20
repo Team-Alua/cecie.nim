@@ -32,6 +32,8 @@ type SaveListEntry = object
   kind: PathComponent
   path: string
   mode: Mode
+  uid: Uid
+  gid: Gid
 
 
 template respondWithOk(client: untyped) = 
@@ -109,6 +111,7 @@ proc getRequiredFiles(targetDirectory: string, whitelist: seq[string]) : seq[tup
   result = newSeq[tuple[kind: PathComponent, relativePath: string]]()
   let shouldFilter = whitelist.len > 0
   var s : Stat
+
   for filePath in walkDirRec(targetDirectory, yieldFilter={pcFile,pcDir}, relative=true, skipSpecial=true):
     let fullPath = targetDirectory / filePath 
     discard stat(fullPath.cstring, s)
@@ -190,10 +193,6 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
   else:
     for (kind, relativePath) in getRequiredFiles(cmd.sourceFolder, cmd.selectOnly):
       let targetPath = joinPath(mntFolder, relativePath)
-      if relativePath.startsWith("sce_sys"):
-        discard setuid(0)
-      else:
-        discard setuid(1)
       if kind == pcDir:
         discard mkdir(targetPath.cstring, 0o777)
       elif kind == pcFile:
@@ -207,7 +206,6 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
           respondWithError(client, "E:COPY_FAILED")
           failed = true
           break
-    discard setuid(0)
     discard umountSave(mntFolder, handle, false)
   discard rmdir(mntFolder.cstring)
   if failed:
@@ -238,7 +236,7 @@ proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.a
       if stat((mntFolder / relativePath).cstring, s) == -1:
         respondWithError(client, "E:STAT_FAILED-" & errno.toHex(8))
         break
-      listEntries.add SaveListEntry(kind: kind, path: relativePath, mode: s.st_mode)
+      listEntries.add SaveListEntry(kind: kind, path: relativePath, mode: s.st_mode, uid: s.st_uid, gid: s.st_gid)
     respondWithJson(client, %listEntries)
     discard umountSave(mntFolder, handle, false)
   discard rmdir(mntFolder.cstring)
