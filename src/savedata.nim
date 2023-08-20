@@ -119,6 +119,8 @@ proc mountSave*(folder: string, saveName: string, mountPath: string) : tuple[pat
     return (-2, errno)
   var opt : MountSaveDataOpt
   discard sceFsInitMountSaveDataOpt(opt.addr)
+  var bid: string = "system"
+  opt.budgetid = bid.cstring
   ret = sceFsMountSaveData(opt.addr, volumePath.cstring, mountPath.cstring, decryptedSealedKey)
   if ret < 0:
     return (-3, ret)

@@ -68,7 +68,7 @@ proc setupCredentials() =
   # Run as root
   var cred = get_cred()
   cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
-  cred.sceProcType = uint64(0x3801000000000013)
+  cred.sceProcType = uint64(0x3800000000000010)
   discard set_cred(cred)
   discard setuid(0)
 
@@ -142,7 +142,7 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
   var (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.sourceSaveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
-    respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
+    respondWithError(client, "E:MOUNT_FAILED-" & errPath.toHex(2) & "-" & handle.toHex(8))
   else:
     for (kind, relativePath) in getRequiredFiles(mntFolder, cmd.dumpOnly):
       if kind == pcDir:

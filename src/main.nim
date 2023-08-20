@@ -24,10 +24,12 @@ proc setup() =
   # Mount required devices into sandbox
   discard sudo_mount("/dev/", "rootdev")
   var s : Stat
-  discard stat("/rootdev/pfsctldev", s)
-  discard sys_mknod("/dev/pfsctldev", Mode(S_IFCHR or 0o777), s.st_dev)
-  discard stat("/rootdev/lvdctl", s)
-  discard sys_mknod("/dev/lvdctl", Mode(S_IFCHR or 0o777), s.st_dev)
+  echo stat("/rootdev/pfsctldev", s)
+  echo sys_mknod("/dev/pfsctldev", Mode(S_IFCHR or 0o777), s.st_dev)
+  echo stat("/rootdev/lvdctl", s)
+  echo sys_mknod("/dev/lvdctl", Mode(S_IFCHR or 0o777), s.st_dev)
+  echo stat("/rootdev/sbl_srv", s)
+  echo sys_mknod("/dev/sbl_srv", Mode(S_IFCHR or 0o777), s.st_dev)
   discard sudo_unmount("rootdev")
   
   # Get max keyset that can be decrypted
@@ -41,9 +43,10 @@ cred.sceProcType = uint64(0x3801000000000013)
 discard set_cred(cred)
 discard setuid(0)
 
-setup()
 
+setup()
 discard set_cred(old_cred)
+
 
 
 proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {.async.} = 
@@ -51,7 +54,6 @@ proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {
   # let address = clientContext.address
   let client = clientContext.client
   var data = await client.recvLine()
-  defer: client.close()
   if data.len == 0:
     return
   let req = parseRequest(data)
