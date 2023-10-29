@@ -160,6 +160,10 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
         let sourceFile = joinPath(mntFolder, relativePath)
         try:
           copyFile(sourceFile, targetFile)
+        except IOError:
+          respondWithError(client, "E:COPY_FAILED")
+          failed = true
+          break
         except OSError:
           respondWithError(client, "E:COPY_FAILED")
           failed = true
@@ -208,10 +212,15 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
         let sourcePath = joinPath(cmd.sourceFolder, relativePath)
         try:
           copyFile(sourcePath, targetPath)
+        except IOError:
+          respondWithError(client, "E:COPY_FAILED")
+          failed = true
+          break
         except OSError:
           respondWithError(client, "E:COPY_FAILED")
           failed = true
           break
+
     discard setuid(0)
     discard umountSave(mntFolder, handle, false)
   discard rmdir(mntFolder.cstring)
