@@ -18,7 +18,7 @@ var sceFsInitCreatePfsSaveDataOpt: proc(opt: ptr CreatePfsSaveDataOpt) : cint {.
 var sceFsCreatePfsSaveDataImage : proc(opt: ptr CreatePfsSaveDataOpt, volumePath: cstring, idk:cint, volumeSize: culonglong, decryptSealedKey : array[32,byte]) : cint {.cdecl.}
 
 type MountSaveDataOpt = object
-  idk: bool
+  readOnly: bool
   budgetid: cstring
 
 var sceFsInitMountSaveDataOpt: proc(opt: ptr MountSaveDataOpt) : cint {.cdecl.}
@@ -103,20 +103,25 @@ proc createSave*(folder: string, saveName: string, blocks: cint) : cint =
   discard close(fd);
   return 0
 
-proc mountSave*(folder: string, saveName: string, mountPath: string) : tuple[path: cint, error : cint] = 
+proc decryptSealedKeyAtPath*(keyPath: string, decryptedSealedKey: var array[32,byte]) : cint = 
   var sealedKey : array[96, byte]
-  var volumeKeyPath : string = joinPath(folder, saveName & ".bin")
-  var volumePath : string = joinPath(folder, saveName)
-  var fd = sys_open(volumeKeyPath.cstring, O_RDONLY, 0)
+  var fd = sys_open(keyPath.cstring, O_RDONLY, 0)
   if fd == -1:
-    return (-1, errno)
+    return -1
   discard read(fd,sealedKey.addr, sealedKey.len)
   discard close(fd)
-
-  var decryptedSealedKey: array[32, byte]
   var ret = decryptSealedKey(sealedKey, decryptedSealedKey)
   if ret == -1:
-    return (-2, errno)
+    return -2
+  return 0
+
+proc mountSave*(folder: string, saveName: string, mountPath: string) : tuple[path: cint, error : cint] = 
+  var volumeKeyPath : string = joinPath(folder, saveName & ".bin")
+  var volumePath : string = joinPath(folder, saveName)
+  var decryptedSealedKey: array[32,byte]
+  var ret = decryptSealedKeyAtPath(volumeKeyPath, decryptedSealedKey)
+  if ret < 0:
+    return (ret, errno)
   var opt : MountSaveDataOpt
   discard sceFsInitMountSaveDataOpt(opt.addr)
   var bid: string = "system"
@@ -125,6 +130,7 @@ proc mountSave*(folder: string, saveName: string, mountPath: string) : tuple[pat
   if ret < 0:
     return (-3, ret)
   return (0, 0)
+
 
 proc umountSave*(mountPath: string, handle: cint, ignoreErrors: bool) : cint =
   var opt: UmountSaveDataOpt

@@ -31,6 +31,7 @@ type ServerResponse = object
 type SaveListEntry = object
   kind: PathComponent
   path: string
+  size: Off
   mode: Mode
   uid: Uid
   gid: Gid
@@ -70,7 +71,7 @@ proc setupCredentials() =
   # Run as root
   var cred = get_cred()
   cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
-  cred.sceProcType = uint64(0x3800000000000010)
+  cred.sceProcType = uint64(0x3801000000000013)
   discard set_cred(cred)
   discard setuid(0)
 
@@ -192,6 +193,11 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
   else:
     for (kind, relativePath) in getRequiredFiles(cmd.sourceFolder, cmd.selectOnly):
+      if relativePath.startsWith("sce_sys") or relativePath == "memory.dat":
+        discard setuid(0)
+      else:
+        discard setuid(1)
+
       let targetPath = joinPath(mntFolder, relativePath)
       if kind == pcDir:
         discard mkdir(targetPath.cstring, 0o777)
@@ -206,6 +212,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
           respondWithError(client, "E:COPY_FAILED")
           failed = true
           break
+    discard setuid(0)
     discard umountSave(mntFolder, handle, false)
   discard rmdir(mntFolder.cstring)
   if failed:
@@ -226,32 +233,34 @@ proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.a
   discard mkdir(mntFolder.cstring, 0o777)
 
   let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.listTargetSaveName, mntFolder)
+  var listEntries: seq[SaveListEntry] = newSeq[SaveListEntry]()
   var failed = errPath != 0
-  if errPath != 0:
+
+  if failed:
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
   else:
-    var listEntries: seq[SaveListEntry] = newSeq[SaveListEntry]()
     for (kind, relativePath) in getRequiredFiles(mntFolder, @[]):
       var s : Stat
       if stat((mntFolder / relativePath).cstring, s) == -1:
         respondWithError(client, "E:STAT_FAILED-" & errno.toHex(8))
+        failed = true
         break
-      listEntries.add SaveListEntry(kind: kind, path: relativePath, mode: s.st_mode, uid: s.st_uid, gid: s.st_gid)
-    respondWithJson(client, %listEntries)
+      listEntries.add SaveListEntry(kind: kind, path: relativePath, size: s.st_size, mode: s.st_mode, uid: s.st_uid, gid: s.st_gid)
     discard umountSave(mntFolder, handle, false)
   discard rmdir(mntFolder.cstring)
-  if failed:
-    exitnow(-1)
-  else:
-    exitnow(0)
+  if not failed:
+    respondWithJson(client, %listEntries)
+  # Should not do a srOk response since that's redundant
+  exitnow(-1)
 
 type RequestHandler = proc (cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.}
 var cmds : array[ClientRequestType, RequestHandler]
 cmds[rtDumpSave] = dumpSave
 cmds[rtUpdateSave] = updateSave
 cmds[rtListSaveFiles] = listSaveFiles
-var slot: int
-var slotTotal: int
+var slot: uint
+var slotTotal: uint32
+      
 proc handleForkCmds(client: AsyncSocket, cmd: ClientRequest) {.async.} =
   inc slot
   # No matter who mounts

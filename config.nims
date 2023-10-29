@@ -3,7 +3,7 @@ import os
 switch "o", "cecie.elf"
 switch "mm", "orc"
 switch "nimcache", "./cache"
-# switch "threads", "off"
+switch "threads", "off"
 
 proc getContentId: string =
   let servId = getEnv("app_SERVICE_ID")

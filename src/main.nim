@@ -9,6 +9,7 @@ import "./savedata"
 import "./utils"
 import "./commands"
 import "./requests"
+
 import libjbc
 import posix
 {.passc: "-fstack-protector".}
@@ -31,7 +32,7 @@ proc setup() =
   echo stat("/rootdev/sbl_srv", s)
   echo sys_mknod("/dev/sbl_srv", Mode(S_IFCHR or 0o777), s.st_dev)
   discard sudo_unmount("rootdev")
-  
+
   # Get max keyset that can be decrypted
   discard getMaxKeySet()
 var old_cred = get_cred()
@@ -42,11 +43,8 @@ cred.sonyCred = cred.sonyCred or uint64(0x40_00_00_00_00_00_00_00)
 cred.sceProcType = uint64(0x3801000000000013)
 discard set_cred(cred)
 discard setuid(0)
-
-
 setup()
 discard set_cred(old_cred)
-
 
 
 proc handleClient(clientContext : tuple[address: string, client: AsyncSocket]) {.async.} = 
