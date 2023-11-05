@@ -126,13 +126,51 @@ proc getRequiredFiles(targetDirectory: string, whitelist: seq[string]) : seq[tup
       continue
     result.add (kind, filePath)
 
+proc resignSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.resign.saveName)
+  if saveStatus != 0:
+    await reportSaveError(saveStatus, client)
+    return
+  setupCredentials()
+  let mntFolder = "/data/" & mountId
+  discard rmdir(mntFolder.cstring)
+  discard mkdir(mntFolder.cstring, 0o777)
+
+  var (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.resign.saveName, mntFolder)
+  var failed = errPath != 0
+  if errPath != 0:
+    respondWithError(client, "E:MOUNT_FAILED-" & errPath.toHex(2) & "-" & handle.toHex(8))
+  else:
+    # Open save file for writing
+    # Change value @0x15C to supplied value
+    # Can't modify sce_sys otherwise
+    discard setuid(0); 
+    let sfoPath = joinPath(mntFolder, "sce_sys/param.sfo")
+    let sfoFd = open(sfoPath.cstring, O_RDWR, 0o777) 
+    let writeResult = sys_pwrite(sfoFd, cmd.resign.accountId.addr, int(8), Off(0x15C))
+    failed = writeResult != 8
+    if writeResult < 0:
+      respondWithError(client, "E:PWRITE_FAILED-" & errno.toHex(8))
+    elif writeResult < 8:
+      respondWithError(client, "E:PWRITE_INCOMPLETE_WRITE")
+    elif failed:
+      respondWithError(client, "E:UNKNOWN_ISSUE-" & writeResult.toHex(16))
+    discard close(sfoFd)
+    discard umountSave(mntFolder, handle, false)
+  discard rmdir(mntFolder.cstring)
+  if failed:
+    exitnow(-1)
+  else:
+    exitnow(0)
+
+
 proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
   var s: Stat
-  if stat(cmd.targetFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
+  if stat(cmd.dump.targetFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
     respondWithError(client, "E:TARGET_FOLDER_INVALID")
     return
 
-  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.sourceSaveName)
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.dump.saveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -143,17 +181,17 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
-  var (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.sourceSaveName, mntFolder)
+  var (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.dump.saveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & errPath.toHex(2) & "-" & handle.toHex(8))
   else:
-    for (kind, relativePath) in getRequiredFiles(mntFolder, cmd.dumpOnly):
+    for (kind, relativePath) in getRequiredFiles(mntFolder, cmd.dump.selectOnly):
       if kind == pcDir:
-        let targetPath = joinPath(cmd.targetFolder, relativePath)
+        let targetPath = joinPath(cmd.dump.targetFolder, relativePath)
         discard mkdir(targetPath.cstring, 0o777)
       elif kind == pcFile:
-        let targetFile = joinPath(cmd.targetFolder, relativePath)
+        let targetFile = joinPath(cmd.dump.targetFolder, relativePath)
         # Create it just in case
         let fd = open(targetFile.cstring, O_RDONLY, 0o777)
         discard close(fd)
@@ -177,10 +215,10 @@ proc dumpSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.
 
 proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
   var s: Stat
-  if stat(cmd.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
+  if stat(cmd.update.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
     respondWithError(client, "E:SOURCE_FOLDER_INVALID")
     return 
-  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.targetSaveName)
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.update.saveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -191,12 +229,12 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
-  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.targetSaveName, mntFolder)
+  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.update.saveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
   else:
-    for (kind, relativePath) in getRequiredFiles(cmd.sourceFolder, cmd.selectOnly):
+    for (kind, relativePath) in getRequiredFiles(cmd.update.sourceFolder, cmd.update.selectOnly):
       if relativePath.startsWith("sce_sys") or relativePath == "memory.dat":
         discard setuid(0)
       else:
@@ -209,7 +247,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
         # Create and truncate it just in case
         let fd = open(targetPath.cstring, O_CREAT or O_TRUNC, 0o777)
         discard close(fd)
-        let sourcePath = joinPath(cmd.sourceFolder, relativePath)
+        let sourcePath = joinPath(cmd.update.sourceFolder, relativePath)
         try:
           copyFile(sourcePath, targetPath)
         except IOError:
@@ -230,7 +268,7 @@ proc updateSave(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asyn
     exitnow(0)
 
 proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
-  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.listTargetSaveName)
+  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.list.saveName);
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -241,7 +279,7 @@ proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.a
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
 
-  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.listTargetSaveName, mntFolder)
+  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.list.saveName, mntFolder)
   var listEntries: seq[SaveListEntry] = newSeq[SaveListEntry]()
   var failed = errPath != 0
 
@@ -267,6 +305,7 @@ var cmds : array[ClientRequestType, RequestHandler]
 cmds[rtDumpSave] = dumpSave
 cmds[rtUpdateSave] = updateSave
 cmds[rtListSaveFiles] = listSaveFiles
+cmds[rtResignSave] = resignSave
 var slot: uint
 var slotTotal: uint32
       

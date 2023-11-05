@@ -1,29 +1,51 @@
 import json
+
 type ClientRequestType* = enum
   rtKeySet,
   rtListSaveFiles,
   rtCreateSave,
   rtDumpSave,
   rtUpdateSave,
+  rtResignSave,
   rtInvalid
 
 
+type ListClientRequest* = object
+  saveName*: string
+
+type CreateClientRequest* = object
+  sourceFolder*: string
+  saveName*: string
+  selectOnly*: seq[string]
+
+type UpdateClientRequest* = object
+  sourceFolder*: string
+  saveName*: string
+  selectOnly*: seq[string]
+
+type DumpClientRequest* = object
+  targetFolder*: string
+  saveName*: string
+  selectOnly*: seq[string]
+
+type ResignClientRequest* = object
+  accountId*: uint64
+  saveName*: string
+
 type ClientRequest* = object
   case RequestType*: ClientRequestType
-  of rtKeySet:
+  of rtKeySet, rtInvalid:
     discard
   of rtListSaveFiles:
-    listTargetSaveName*: string
-  of rtCreateSave, rtUpdateSave:
-    sourceFolder*: string
-    targetSaveName*: string
-    selectOnly*: seq[string]
+    list*: ListClientRequest
+  of rtCreateSave:
+    create*: CreateClientRequest
+  of rtUpdateSave:
+    update*: UpdateClientRequest
   of rtDumpSave:
-    sourceSaveName*: string
-    targetFolder*: string
-    dumpOnly*: seq[string]
-  of rtInvalid:
-    discard
+    dump*: DumpClientRequest
+  of rtResignSave:
+    resign*: ResignClientRequest
 
 proc parseRequest*(data: string): ClientRequest = 
   try:
