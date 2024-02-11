@@ -7,6 +7,7 @@ type ClientRequestType* = enum
   rtDumpSave,
   rtUpdateSave,
   rtResignSave,
+  rtClean,
   rtInvalid
 
 
@@ -32,6 +33,10 @@ type ResignClientRequest* = object
   accountId*: uint64
   saveName*: string
 
+type CleanClientRequest* = object
+  saveName*: string
+  folder*: string
+
 type ClientRequest* = object
   case RequestType*: ClientRequestType
   of rtKeySet, rtInvalid:
@@ -46,6 +51,8 @@ type ClientRequest* = object
     dump*: DumpClientRequest
   of rtResignSave:
     resign*: ResignClientRequest
+  of rtClean:
+    clean*: CleanClientRequest
 
 proc parseRequest*(data: string): ClientRequest = 
   try:

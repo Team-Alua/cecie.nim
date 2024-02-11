@@ -36,6 +36,9 @@ type SaveListEntry = object
   uid: Uid
   gid: Gid
 
+type DeleteEntry = object
+  path: string
+  error: string
 
 template respondWithOk(client: untyped) = 
   await client.send($$ServerResponse(ResponseType: srOk) & "\r\L")
@@ -300,12 +303,42 @@ proc listSaveFiles(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.a
   # Should not do a srOk response since that's redundant
   exitnow(-1)
 
+proc cleanup(cmd: ClientRequest, client: AsyncSocket) {.async.} =
+  # Delete the save before deleting the folder
+  let saveName = cmd.clean.saveName
+  var failed: seq[DeleteEntry] = @[]
+  if saveName.len > 0:
+    let saveImagePath = joinPath(SAVE_DIRECTORY, saveName)
+    try:
+      removeFile(saveImagePath)
+    except OSError as e:
+      failed.add DeleteEntry(path: saveImagePath, error: e.msg)
+      discard  
+
+    let saveKeyPath = joinPath(SAVE_DIRECTORY, saveName & ".bin")
+    try:
+      removeFile(saveKeyPath)
+    except OSError as e:
+      failed.add DeleteEntry(path: saveKeyPath, error: e.msg)
+      discard  
+    
+  let folder = cmd.clean.folder
+  if folder.len > 0:
+    try:
+      removeDir(folder)
+    except OSError as e:
+      failed.add DeleteEntry(path: folder, error: e.msg)
+      discard
+  respondWithJson(client, %failed)
+
 type RequestHandler = proc (cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.}
+
 var cmds : array[ClientRequestType, RequestHandler]
 cmds[rtDumpSave] = dumpSave
 cmds[rtUpdateSave] = updateSave
 cmds[rtListSaveFiles] = listSaveFiles
 cmds[rtResignSave] = resignSave
+
 var slot: uint
 var slotTotal: uint32
       
@@ -346,6 +379,8 @@ proc handleCmd*(client: AsyncSocket, cmd: ClientRequest) {.async.} =
     respondWithKeySet(client, getMaxKeySet())
   elif cmd.RequestType == rtInvalid:
     respondWithError(client, "E:INVALID_CMD")
+  elif cmd.RequestType == rtClean:
+    await cleanup(cmd, client)
   else:
     await handleForkCmds(client, cmd)
 

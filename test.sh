@@ -18,3 +18,6 @@ nc 10.0.0.5 1234 << EOF
 {"RequestType": "rtKeySet"}
 EOF
 
+nc 10.0.0.5 1234 << EOF
+{"RequestType": "rtClean", "clean": {"saveName": "data0001", "folder": "/data/dump"}}
+EOF
