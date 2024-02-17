@@ -8,6 +8,9 @@ type ClientRequestType* = enum
   rtUpdateSave,
   rtResignSave,
   rtClean,
+  rtUploadFile,
+  rtDownloadFile,
+  rtListFiles,
   rtInvalid
 
 
@@ -37,6 +40,16 @@ type CleanClientRequest* = object
   saveName*: string
   folder*: string
 
+type UploadClientRequest* = object
+  target*: string
+  size*: uint64
+
+type DownloadClientRequest* = object
+  source*: string
+
+type ListFilesClientRequest* = object
+  folder*:string
+
 type ClientRequest* = object
   case RequestType*: ClientRequestType
   of rtKeySet, rtInvalid:
@@ -53,6 +66,12 @@ type ClientRequest* = object
     resign*: ResignClientRequest
   of rtClean:
     clean*: CleanClientRequest
+  of rtUploadFile:
+    upload*: UploadClientRequest
+  of rtDownloadFile:
+    download*: DownloadClientRequest
+  of rtListFiles:
+    ls*: ListFilesClientRequest
 
 proc parseRequest*(data: string): ClientRequest = 
   try:

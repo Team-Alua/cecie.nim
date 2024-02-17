@@ -14,6 +14,7 @@ import libjbc
 import posix
 {.passc: "-fstack-protector".}
 addHandler(newKernelLogger())
+signal(SIG_PIPE, SIG_IGN)
 
 proc setup() =
   # Load private libs
@@ -71,5 +72,4 @@ proc requestListener() {.async.} =
 asyncCheck requestListener()
 
 while true:
-  poll(1)
-
+  poll()
