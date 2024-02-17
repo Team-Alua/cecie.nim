@@ -12,15 +12,13 @@ import "./object"
 # Best buffer size 
 const BUFFER_SIZE = 32768
 
-proc writeToFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): Future[bool] {.async.} =
+proc writeToFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): bool =
   var p = 0
   while p < amt:
     let written = sys_write(fd, addr(buffer[p]), amt - p)
     if written <= 0:
       return false
     p += written
-    let fut = sleepAsync(0)
-    yield fut
   return true
 
 proc UploadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.} =
@@ -31,6 +29,8 @@ proc UploadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.} 
   if file < 0:
     respondWithError(client, "E:OPEN_FAILED-" & errno.toHex(8))
     return
+  else:
+    respondWithOk(client)
 
   var buffer: array[BUFFER_SIZE, byte]
 
@@ -47,7 +47,7 @@ proc UploadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.} 
       break
 
     let rd = fut.read()
-    if not await writeToFile(file, buffer, rd):
+    if not writeToFile(file, buffer, rd):
       break
     size -= uint64(rd)
 

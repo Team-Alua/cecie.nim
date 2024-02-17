@@ -11,7 +11,7 @@ import "./object"
 
 const BUFFER_SIZE = 32768
 
-proc readFromFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): Future[bool] {.async.} =
+proc readFromFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): bool =
   if buffer.len < amt:
     return false
 
@@ -21,7 +21,6 @@ proc readFromFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): Future[
     if rd <= 0:
       return false
     p += rd
-    await sleepAsync(0)
 
   return true
 
@@ -60,7 +59,7 @@ proc DownloadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.
 
   while total > 0:
     let size = int(min(total, Off(BUFFER_SIZE)))
-    if not await readFromFile(file, buffer, size):
+    if not readFromFile(file, buffer, size):
       break
     if not await sendToClient(client, buffer, size):
       break
