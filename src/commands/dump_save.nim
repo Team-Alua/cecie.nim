@@ -41,7 +41,7 @@ proc DumpSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async
       elif kind == pcFile:
         let targetFile = joinPath(cmd.dump.targetFolder, relativePath)
         # Create it just in case
-        let fd = open(targetFile.cstring, O_RDONLY, 0o777)
+        let fd = open(targetFile.cstring, O_CREAT, 0o777)
         discard close(fd)
         let sourceFile = joinPath(mntFolder, relativePath)
         try:

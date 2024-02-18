@@ -3,39 +3,36 @@ import asyncdispatch
 import asyncnet
 import posix
 import json
+import nativesockets
 
 import "./response"
 import "../syscalls"
 import "../requests"
 import "./object"
 
-const BUFFER_SIZE = 32768
+proc sendfile*(fd: cint, soc: cint, 
+                   offset: Off, nbytes: csize_t,
+                  hdtr: pointer,sbytes: ptr Off,
+                  flags: cint): cint {.cdecl, importc:"sendfile", header:"<orbis/libkernel.h>".}
 
-proc readFromFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): bool =
-  if buffer.len < amt:
-    return false
-
-  var p = 0
-  while p < amt:
-    let rd = sys_read(fd, addr(buffer[p]), amt - p)
-    if rd <= 0:
-      return false
-    p += rd
-
-  return true
-
-proc sendToClient(client: AsyncSocket, buffer: array[BUFFER_SIZE, byte], amt: int): Future[bool] {.async.} =
-  if buffer.len < amt:
-    return false
-  let fut = client.send(addr(buffer[0]), amt)
-  let sent = await withTimeout(fut, 1000)
-  if not sent:
-    return false
-  yield fut
-  return not fut.failed
+const BUFFER_SIZE = 8192 * 4
 
 type SizeResponse = object
   size: Off
+
+proc download(fd: cint, soc: cint,  total: Off) {.async.} =
+  var off : Off
+  let size = csize_t(BUFFER_SIZE)
+  var written : Off
+  while off < total:
+    let ret = sendfile(fd,soc, off, size , nil, addr(written), 0)
+    if ret < 0:
+      if errno != EAGAIN:
+        echo "errno: ", errno, " written: ", written
+        break 
+    off += written
+    await sleepAsync(0)
+  
 
 proc DownloadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.} =
   let download = cmd.download
@@ -55,15 +52,14 @@ proc DownloadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.
   resp.size = total
   respondWithJson(client, %resp)
 
-  var buffer: array[BUFFER_SIZE, byte]
 
-  while total > 0:
-    let size = int(min(total, Off(BUFFER_SIZE)))
-    if not readFromFile(file, buffer, size):
-      break
-    if not await sendToClient(client, buffer, size):
-      break
-    total -= size
+  # var buffer: array[BUFFER_SIZE, byte]
+  var off: Off
+  
+
+  let soc = cint(client.getFd())
+  await download(file, soc, total)
   discard file.close()
 
 let cmd* = Command(useSlot: false, useFork: false, fun: DownloadFile)
+
