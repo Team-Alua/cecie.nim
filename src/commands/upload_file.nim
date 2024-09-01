@@ -22,7 +22,7 @@ proc writeToFile(fd: cint, buffer: array[BUFFER_SIZE, byte], amt: int): bool =
   return true
 
 proc UploadFile*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.} =
-  let upload = cmd.upload
+  let upload: UploadClientRequest = cmd.upload
   let target = upload.target 
   createDir(parentDir(target))
   let file = open(target.cstring, O_CREAT or O_TRUNC or O_WRONLY, 0o777)

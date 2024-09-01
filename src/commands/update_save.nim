@@ -12,11 +12,14 @@ import "../savedata"
 import "./object"
 
 proc UpdateSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
+  let update: UpdateClientRequest = cmd.update
+
   var s: Stat
-  if stat(cmd.update.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
+  if stat(update.sourceFolder.cstring, s) != 0 or not s.st_mode.S_ISDIR:
     respondWithError(client, "E:SOURCE_FOLDER_INVALID")
     return 
-  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.update.saveName)
+  let (saveDir, saveName) = getSavePathComponents(update.saveName, SAVE_DIRECTORY)
+  let saveStatus = checkSave(saveDir, saveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -27,12 +30,12 @@ proc UpdateSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asy
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
   # Then dump everything
-  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.update.saveName, mntFolder)
+  let (errPath, handle) = mountSave(saveDir, saveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & handle.toHex(8))
   else:
-    for (kind, relativePath) in getRequiredFiles(cmd.update.sourceFolder, cmd.update.selectOnly):
+    for (kind, relativePath) in getRequiredFiles(update.sourceFolder, update.selectOnly):
       if relativePath.startsWith("sce_sys") or relativePath == "memory.dat":
         discard setuid(0)
       else:
@@ -45,7 +48,7 @@ proc UpdateSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asy
         # Create and truncate it just in case
         let fd = open(targetPath.cstring, O_CREAT or O_TRUNC, 0o777)
         discard close(fd)
-        let sourcePath = joinPath(cmd.update.sourceFolder, relativePath)
+        let sourcePath = joinPath(update.sourceFolder, relativePath)
         try:
           copyFile(sourcePath, targetPath)
         except IOError:

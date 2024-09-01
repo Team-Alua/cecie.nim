@@ -2,6 +2,9 @@ import os
 import posix
 import logging
 
+import "orbis/buffered_text"
+import "orbis/logging" as l
+
 import "orbis/kernel"
 import "orbis/savedata_advanced"
 
@@ -59,7 +62,7 @@ proc loadPrivLibs*(): bool  =
   if kernel_sys >= 0:
     discard sceKernelDlsym(kernel_sys, "statfs", cast[ptr pointer](statfs.addr));
   else:
-    echo "kernel_sys: ", kernel_sys
+    clog "kernel_sys: ", kernel_sys
     success = false
   return success
 
@@ -79,7 +82,7 @@ proc createSave*(folder: string, saveName: string, blocks: cint) : cint =
   removeFile(volumePath)
   var fd = sys_open(volumeKeyPath.cstring, O_CREAT or O_EXCL or O_RDWR, 0o777)
   if fd == -1:
-    echo "errno: ", errno, " file: ", volumeKeyPath
+    clog "errno: ", errno, " file: ", volumeKeyPath
     return -3
   discard write(fd,sealedKey.addr, sealedKey.len)
   discard close(fd)

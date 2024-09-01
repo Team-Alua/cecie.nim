@@ -13,7 +13,10 @@ import "./response"
 import "./object"
 
 proc ResignSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
-  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.resign.saveName)
+  let resign: ResignClientRequest = cmd.resign
+
+  let (saveDir, saveName) = getSavePathComponents(resign.saveName, SAVE_DIRECTORY)
+  let saveStatus = checkSave(saveDir, saveName)
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -22,7 +25,7 @@ proc ResignSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asy
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
 
-  var (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.resign.saveName, mntFolder)
+  var (errPath, handle) = mountSave(saveDir, saveName, mntFolder)
   var failed = errPath != 0
   if errPath != 0:
     respondWithError(client, "E:MOUNT_FAILED-" & errPath.toHex(2) & "-" & handle.toHex(8))
@@ -33,7 +36,7 @@ proc ResignSave*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.asy
     discard setuid(0); 
     let sfoPath = joinPath(mntFolder, "sce_sys/param.sfo")
     let sfoFd = open(sfoPath.cstring, O_RDWR, 0o777) 
-    let writeResult = sys_pwrite(sfoFd, cmd.resign.accountId.addr, int(8), Off(0x15C))
+    let writeResult = sys_pwrite(sfoFd, resign.accountId.addr, int(8), Off(0x15C))
     failed = writeResult != 8
     if writeResult < 0:
       respondWithError(client, "E:PWRITE_FAILED-" & errno.toHex(8))

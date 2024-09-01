@@ -2,6 +2,8 @@ import asyncdispatch
 import strutils
 import asyncnet
 import logging
+import "./orbis/buffered_text"
+import "./orbis/logging" as l
 import "logger"
 import "syscalls"
 import "./config"
@@ -9,6 +11,7 @@ import "./savedata"
 import "./utils"
 import "./commands"
 import "./requests"
+# import os
 
 import libjbc
 import posix
@@ -26,12 +29,12 @@ proc setup() =
   # Mount required devices into sandbox
   discard sudo_mount("/dev/", "rootdev")
   var s : Stat
-  echo stat("/rootdev/pfsctldev", s)
-  echo sys_mknod("/dev/pfsctldev", Mode(S_IFCHR or 0o777), s.st_dev)
-  echo stat("/rootdev/lvdctl", s)
-  echo sys_mknod("/dev/lvdctl", Mode(S_IFCHR or 0o777), s.st_dev)
-  echo stat("/rootdev/sbl_srv", s)
-  echo sys_mknod("/dev/sbl_srv", Mode(S_IFCHR or 0o777), s.st_dev)
+  clog stat("/rootdev/pfsctldev", s)
+  clog sys_mknod("/dev/pfsctldev", Mode(S_IFCHR or 0o777), s.st_dev)
+  clog stat("/rootdev/lvdctl", s)
+  clog sys_mknod("/dev/lvdctl", Mode(S_IFCHR or 0o777), s.st_dev)
+  clog stat("/rootdev/sbl_srv", s)
+  clog sys_mknod("/dev/sbl_srv", Mode(S_IFCHR or 0o777), s.st_dev)
   discard sudo_unmount("rootdev")
 
   # Get max keyset that can be decrypted
@@ -45,6 +48,7 @@ cred.sceProcType = uint64(0x3801000000000013)
 discard set_cred(cred)
 discard setuid(0)
 setup()
+
 discard set_cred(old_cred)
 
 
@@ -64,7 +68,7 @@ proc requestListener() {.async.} =
   server.setSockOpt(OptReuseAddr, true)
   server.bindAddr(SERVER_PORT)
   server.listen()
-  echo "Listening at port ", int(SERVER_PORT)
+  clog "Listening at port ", int(SERVER_PORT)
   while true:
     let clientContext = await server.acceptAddr()
     asyncCheck handleClient(clientContext)

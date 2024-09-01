@@ -21,7 +21,10 @@ type SaveListEntry = object
   gid*: Gid
 
 proc ListSaveFiles*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.async.} =
-  let saveStatus = checkSave(SAVE_DIRECTORY, cmd.list.saveName);
+  let listCmd: ListClientRequest = cmd.list
+
+  let (saveDir, saveName) = getSavePathComponents(listCmd.saveName, SAVE_DIRECTORY)
+  let saveStatus = checkSave(saveDir, saveName);
   if saveStatus != 0:
     await reportSaveError(saveStatus, client)
     return
@@ -32,7 +35,7 @@ proc ListSaveFiles*(cmd: ClientRequest, client: AsyncSocket, mountId: string) {.
   discard rmdir(mntFolder.cstring)
   discard mkdir(mntFolder.cstring, 0o777)
 
-  let (errPath, handle) = mountSave(SAVE_DIRECTORY, cmd.list.saveName, mntFolder)
+  let (errPath, handle) = mountSave(saveDir, saveName, mntFolder)
   var listEntries: seq[SaveListEntry] = newSeq[SaveListEntry]()
   var failed = errPath != 0
 

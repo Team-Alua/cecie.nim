@@ -1,6 +1,7 @@
 import libjbc
 import posix
 import os
+import std/paths
 import strutils
 
 proc shouldSkipFile*(relativePath: string, kind: PathComponent, fileWhitelist: seq[string]): bool =
@@ -27,6 +28,12 @@ proc setupCredentials*() =
   cred.sceProcType = uint64(0x3801000000000013)
   discard set_cred(cred)
   discard setuid(0)
+
+proc getSavePathComponents*(savePath: string, defaultDir: string): tuple[saveDir: string, saveName: string]  =
+  if savePath[0] == '/':
+    let (parDir, fileName) = splitPath(Path(savePath))
+    return (string(parDir), string(fileName))
+  return (defaultDir, savePath)
 
 proc checkSave*(saveDirectory: string, saveName: string) : int = 
   var s: Stat

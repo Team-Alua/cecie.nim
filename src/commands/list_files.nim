@@ -19,7 +19,9 @@ type ListEntry = object
   gid*: Gid
 
 proc ListFiles*(cmd: ClientRequest, client: AsyncSocket, id: string) {.async.} =
-  let folder = cmd.ls.folder
+  let ls : ListFilesClientRequest = cmd.ls
+
+  let folder = ls.folder
 
   var folderStat : Stat
   if stat(folder.cstring, folderStat) == -1:

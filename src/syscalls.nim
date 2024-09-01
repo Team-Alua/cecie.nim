@@ -82,6 +82,18 @@ proc sys_symlink*(src: cstring, dest: cstring): cint {.cdecl, exportc.} =
   """
   toCError(result, err)
 
+proc sys_mount*(fstype: cstring, dir: cstring, 
+               flags: cint, data: pointer): cint {.cdecl, exportc.} =
+  var err: bool
+  asm """
+    ".intel_syntax;"
+    "mov rax, 21;"
+    "mov r10, rcx;"
+    "syscall;"
+    : "=a"(`result`), "=@ccc"(`err`)
+  """
+  toCError(result, err)
+
 proc sys_unmount*(dir: cstring, flags: cint): cint {.cdecl, exportc.} = 
   var err: bool
   asm """
@@ -150,6 +162,7 @@ proc sys_get_authinfo*(pid : Pid, authinfo: pointer) : cint {.cdecl, exportc.} =
     "syscall;"
     : "=a"(`result`), "=@ccc"(`err`)
   """
+
 proc sys_sysctl*(name: var cint, namelen: cuint,
                 oldp: pointer, oldlenp: var csize_t,
                 newp: pointer, newlen: csize_t): cint {.cdecl, exportc.} =
